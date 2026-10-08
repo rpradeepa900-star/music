@@ -178,14 +178,6 @@ const styles = {
     background: "#fff",
     fontSize: "14px",
   },
-  playerWrap: {
-    position: "relative",
-    width: "100%",
-    paddingTop: "56.25%", // 16:9
-    background: "#000",
-    borderRadius: "12px",
-    overflow: "hidden",
-  },
   playerBox: {
     position: "absolute",
     top: 0,
@@ -227,6 +219,16 @@ const styles = {
   list: { maxHeight: "280px", overflowY: "auto" },
 };
 
+const miniBtn = {
+  flex: 1,
+  minHeight: "38px",
+  fontSize: "18px",
+  borderRadius: "8px",
+  border: "none",
+  background: "#2a2a2a",
+  color: "#fff",
+};
+
 function App() {
   const [search, setSearch] = useState("");
   const [history, setHistory] = useState([]);
@@ -236,6 +238,7 @@ function App() {
   const [nextLoading, setNextLoading] = useState(false);
   const [error, setError] = useState("");
   const [needsTap, setNeedsTap] = useState(false);
+  const [mini, setMini] = useState(false);
 
   const playerRef = useRef(null);
   const playerReadyRef = useRef(false);
@@ -594,6 +597,32 @@ function App() {
     localStorage.removeItem("searchHistory");
   };
 
+  // Mini popup styles
+  const wrapStyle = mini
+    ? {
+        position: "fixed",
+        top: "10px", // keezha venum na: bottom: "14px"
+        right: "10px",
+        width: "240px",
+        zIndex: 1000,
+        background: "#000",
+        borderRadius: "12px",
+        overflow: "hidden",
+        boxShadow: "0 6px 20px rgba(0,0,0,0.4)",
+      }
+    : {
+        position: "relative",
+        width: "100%",
+        height: "100%",
+        background: "#000",
+        borderRadius: "12px",
+        overflow: "hidden",
+      };
+
+  const videoAreaStyle = mini
+    ? { position: "relative", width: "100%", aspectRatio: "16 / 9" }
+    : { position: "absolute", top: 0, left: 0, width: "100%", height: "100%" };
+
   return (
     <div style={styles.page}>
       <h1 style={styles.title}>🎵 My Music App</h1>
@@ -627,16 +656,81 @@ function App() {
       {/* Player */}
       {queue.length > 0 && queue[currentIndex] && (
         <div style={{ marginTop: "18px" }}>
-          <div style={styles.playerWrap}>
-            <div ref={containerRef} style={styles.playerBox}></div>
+          <div style={{ width: "100%", aspectRatio: "16 / 9" }}>
+            <div style={wrapStyle}>
+              <div style={videoAreaStyle}>
+                <div ref={containerRef} style={styles.playerBox}></div>
 
-            {needsTap && (
-              <div style={styles.tapOverlay}>
-                <button onClick={tapToPlay} style={styles.tapBtn}>
-                  ▶ Tap to play
-                </button>
+                {needsTap && (
+                  <div style={styles.tapOverlay}>
+                    <button onClick={tapToPlay} style={styles.tapBtn}>
+                      ▶ Tap to play
+                    </button>
+                  </div>
+                )}
+
+                {/* Normal mode-la mini button */}
+                {!mini && (
+                  <button
+                    onClick={() => setMini(true)}
+                    style={{
+                      position: "absolute",
+                      top: "6px",
+                      left: "6px",
+                      zIndex: 10,
+                      padding: "4px 8px",
+                      fontSize: "14px",
+                      borderRadius: "6px",
+                      border: "none",
+                      background: "rgba(0,0,0,0.6)",
+                      color: "#fff",
+                    }}
+                  >
+                    🗗 Mini
+                  </button>
+                )}
               </div>
-            )}
+
+              {/* Mini mode-la song change controls */}
+              {mini && (
+                <div style={{ background: "#111", padding: "6px" }}>
+                  <div
+                    style={{
+                      color: "#fff",
+                      fontSize: "12px",
+                      marginBottom: "6px",
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {queue[currentIndex].title}
+                  </div>
+
+                  <div style={{ display: "flex", gap: "6px" }}>
+                    <button
+                      onClick={prevSong}
+                      disabled={currentIndex === 0}
+                      style={miniBtn}
+                    >
+                      ⏮
+                    </button>
+
+                    <button
+                      onClick={nextSong}
+                      disabled={nextLoading}
+                      style={miniBtn}
+                    >
+                      {nextLoading ? "..." : "⏭"}
+                    </button>
+
+                    <button onClick={() => setMini(false)} style={miniBtn}>
+                      ⤢
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           <h2 style={styles.songTitle}>{queue[currentIndex].title}</h2>
