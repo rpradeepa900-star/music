@@ -1,14 +1,21 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 function App() {
   const [search, setSearch] = useState("");
   const [history, setHistory] = useState([]);
+  const [queue, setQueue] = useState([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+
   const [videoId, setVideoId] = useState("");
   const [videoTitle, setVideoTitle] = useState("");
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // Multiple public Invidious servers
+  const playerRef = useRef(null);
+  const apiReadyRef = useRef(false);
+
+  // Invidious servers
   const servers = [
     "https://inv.nadeko.net",
     "https://invidious.nerdvpn.de",
@@ -17,7 +24,34 @@ function App() {
     "https://invidious.f5.si",
   ];
 
+  // -----------------------------
+  // Load YouTube API
+  // -----------------------------
+  useEffect(() => {
+    if (window.YT && window.YT.Player) {
+      apiReadyRef.current = true;
+      return;
+    }
+
+    const script = document.createElement("script");
+
+    script.src = "https://www.youtube.com/iframe_api";
+    script.async = true;
+
+    document.body.appendChild(script);
+
+    window.onYouTubeIframeAPIReady = () => {
+      apiReadyRef.current = true;
+    };
+
+    return () => {
+      window.onYouTubeIframeAPIReady = null;
+    };
+  }, []);
+
+  // -----------------------------
   // Load history
+  // -----------------------------
   useEffect(() => {
     const saved = localStorage.getItem("searchHistory");
 
@@ -26,7 +60,70 @@ function App() {
     }
   }, []);
 
-  // Search YouTube through Invidious
+  // -----------------------------
+  // Create YouTube player
+  // -----------------------------
+  useEffect(() => {
+    if (!videoId) return;
+
+    const createPlayer = () => {
+      if (!window.YT || !window.YT.Player) {
+        setTimeout(createPlayer, 500);
+        return;
+      }
+
+      if (playerRef.current) {
+        playerRef.current.destroy();
+      }
+
+      playerRef.current = new window.YT.Player("youtube-player", {
+        videoId: videoId,
+
+        playerVars: {
+          autoplay: 1,
+          controls: 1,
+          playsinline: 1,
+          rel: 0,
+          modestbranding: 1,
+        },
+
+        events: {
+          onReady: (event) => {
+            event.target.playVideo();
+          },
+
+          onStateChange: (event) => {
+            // Song ended
+            if (
+              event.data === window.YT.PlayerState.ENDED
+            ) {
+              playNextSong();
+            }
+          },
+
+          onError: (event) => {
+            console.log("YouTube error:", event.data);
+
+            // If current song fails, try next
+            playNextSong();
+          },
+        },
+      });
+    };
+
+    createPlayer();
+
+    return () => {
+      if (playerRef.current) {
+        playerRef.current.destroy();
+        playerRef.current = null;
+      }
+    };
+  }, [videoId]);
+
+  // -----------------------------
+  // Search YouTube
+  // -----------------------------
   const searchVideo = async (song) => {
     if (!song.trim()) {
       return;
@@ -34,11 +131,9 @@ function App() {
 
     setLoading(true);
     setError("");
-    setVideoId("");
 
     let found = false;
 
-    // Try servers one by one
     for (const server of servers) {
       try {
         const url =
@@ -59,14 +154,66 @@ function App() {
         );
 
         if (video) {
-          setVideoId(video.videoId);
-          setVideoTitle(video.title);
+          const newSong = {
+            videoId: video.videoId,
+            title: video.title,
+          };
+
+          // Add song to queue
+          setQueue((oldQueue) => {
+            const alreadyExists = oldQueue.some(
+              (item) => item.videoId === newSong.videoId
+            );
+
+            if (alreadyExists) {
+              return oldQueue;
+            }
+
+            return [...oldQueue, newSong];
+          });
+
+          // Play newly searched song
+          setQueue((oldQueue) => {
+            const alreadyExists = oldQueue.some(
+              (item) => item.videoId === newSong.videoId
+            );
+
+            if (alreadyExists) {
+              const index = oldQueue.findIndex(
+                (item) => item.videoId === newSong.videoId
+              );
+
+              setCurrentIndex(index);
+
+              setVideoId(newSong.videoId);
+              setVideoTitle(newSong.title);
+
+              return oldQueue;
+            }
+
+            const updatedQueue = [
+              ...oldQueue,
+              newSong,
+            ];
+
+            const newIndex = updatedQueue.length - 1;
+
+            setCurrentIndex(newIndex);
+
+            setVideoId(newSong.videoId);
+            setVideoTitle(newSong.title);
+
+            return updatedQueue;
+          });
 
           found = true;
           break;
         }
       } catch (error) {
-        console.log("Server failed:", server);
+        console.log(
+          "Server failed:",
+          server
+        );
       }
     }
 
@@ -79,7 +226,9 @@ function App() {
     setLoading(false);
   };
 
+  // -----------------------------
   // Search button
+  // -----------------------------
   const handleSearch = async () => {
     if (!search.trim()) {
       return;
@@ -87,13 +236,13 @@ function App() {
 
     const song = search.trim();
 
-    // Search video
     await searchVideo(song);
 
-    // Save history
     const newHistory = [
       song,
-      ...history.filter((item) => item !== song),
+      ...history.filter(
+        (item) => item !== song
+      ),
     ];
 
     setHistory(newHistory);
@@ -106,16 +255,74 @@ function App() {
     setSearch("");
   };
 
+  // -----------------------------
   // History click
+  // -----------------------------
   const handleHistoryClick = (item) => {
-    setSearch(item);
     searchVideo(item);
   };
 
+  // -----------------------------
+  // Next song
+  // -----------------------------
+  const playNextSong = () => {
+    setQueue((currentQueue) => {
+      if (currentQueue.length === 0) {
+        return currentQueue;
+      }
+
+      const nextIndex =
+        currentIndex + 1;
+
+      if (
+        nextIndex >=
+        currentQueue.length
+      ) {
+        // Queue finished
+        return currentQueue;
+      }
+
+      const nextSong =
+        currentQueue[nextIndex];
+
+      setCurrentIndex(nextIndex);
+
+      setVideoId(nextSong.videoId);
+      setVideoTitle(nextSong.title);
+
+      return currentQueue;
+    });
+  };
+
+  // -----------------------------
+  // Previous song
+  // -----------------------------
+  const playPreviousSong = () => {
+    if (currentIndex <= 0) {
+      return;
+    }
+
+    const previousIndex =
+      currentIndex - 1;
+
+    const previousSong =
+      queue[previousIndex];
+
+    setCurrentIndex(previousIndex);
+
+    setVideoId(previousSong.videoId);
+    setVideoTitle(previousSong.title);
+  };
+
+  // -----------------------------
   // Clear history
+  // -----------------------------
   const clearHistory = () => {
     setHistory([]);
-    localStorage.removeItem("searchHistory");
+
+    localStorage.removeItem(
+      "searchHistory"
+    );
   };
 
   return (
@@ -129,9 +336,12 @@ function App() {
         fontFamily: "Arial, sans-serif",
       }}
     >
+      {/* Title */}
+
       <h1
         style={{
-          fontSize: "clamp(24px, 5vw, 36px)",
+          fontSize:
+            "clamp(24px, 5vw, 36px)",
           marginBottom: "25px",
         }}
       >
@@ -139,6 +349,7 @@ function App() {
       </h1>
 
       {/* Search */}
+
       <div
         style={{
           display: "flex",
@@ -151,7 +362,9 @@ function App() {
           type="text"
           placeholder="Search song..."
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e) =>
+            setSearch(e.target.value)
+          }
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               handleSearch();
@@ -175,20 +388,24 @@ function App() {
           disabled={loading}
           style={{
             padding: "12px 20px",
-            cursor: loading ? "not-allowed" : "pointer",
+            cursor: loading
+              ? "not-allowed"
+              : "pointer",
             border: "none",
             borderRadius: "5px",
             background: "#222",
             color: "white",
             fontSize: "16px",
-            flex: "0 0 auto",
           }}
         >
-          {loading ? "Searching..." : "Search"}
+          {loading
+            ? "Searching..."
+            : "Search"}
         </button>
       </div>
 
       {/* Error */}
+
       {error && (
         <p
           style={{
@@ -201,10 +418,12 @@ function App() {
       )}
 
       {/* History */}
+
       <h2
         style={{
           marginTop: "30px",
-          fontSize: "clamp(20px, 4vw, 28px)",
+          fontSize:
+            "clamp(20px, 4vw, 28px)",
         }}
       >
         Search History
@@ -217,7 +436,9 @@ function App() {
           {history.map((item, index) => (
             <div
               key={index}
-              onClick={() => handleHistoryClick(item)}
+              onClick={() =>
+                handleHistoryClick(item)
+              }
               style={{
                 padding: "12px",
                 marginBottom: "8px",
@@ -252,7 +473,47 @@ function App() {
         </button>
       )}
 
-      {/* Video */}
+      {/* Queue */}
+
+      {queue.length > 0 && (
+        <div
+          style={{
+            marginTop: "30px",
+          }}
+        >
+          <h2>🎶 Queue</h2>
+
+          {queue.map((song, index) => (
+            <div
+              key={song.videoId}
+              onClick={() => {
+                setCurrentIndex(index);
+                setVideoId(song.videoId);
+                setVideoTitle(song.title);
+              }}
+              style={{
+                padding: "12px",
+                marginBottom: "8px",
+                borderRadius: "6px",
+                background:
+                  index === currentIndex
+                    ? "#222"
+                    : "#f2f2f2",
+                color:
+                  index === currentIndex
+                    ? "white"
+                    : "black",
+                cursor: "pointer",
+              }}
+            >
+              {index + 1}. {song.title}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Player */}
+
       {videoId && (
         <div
           style={{
@@ -262,12 +523,15 @@ function App() {
         >
           <h2
             style={{
-              fontSize: "clamp(18px, 4vw, 26px)",
+              fontSize:
+                "clamp(18px, 4vw, 26px)",
               wordBreak: "break-word",
             }}
           >
             {videoTitle}
           </h2>
+
+          {/* YouTube Player */}
 
           <div
             style={{
@@ -277,22 +541,100 @@ function App() {
               height: 0,
               overflow: "hidden",
               borderRadius: "10px",
+              background: "#000",
             }}
           >
-            <iframe
-              src={`https://www.youtube.com/embed/${videoId}`}
-              title={videoTitle}
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
+            <div
+              id="youtube-player"
               style={{
                 position: "absolute",
                 top: 0,
                 left: 0,
                 width: "100%",
                 height: "100%",
-                border: "none",
               }}
             />
+          </div>
+
+          {/* Controls */}
+
+          <div
+            style={{
+              display: "flex",
+              gap: "10px",
+              marginTop: "15px",
+              flexWrap: "wrap",
+            }}
+          >
+            <button
+              onClick={playPreviousSong}
+              disabled={currentIndex === 0}
+              style={{
+                padding: "12px 18px",
+                border: "none",
+                borderRadius: "6px",
+                cursor:
+                  currentIndex === 0
+                    ? "not-allowed"
+                    : "pointer",
+              }}
+            >
+              ⏮ Previous
+            </button>
+
+            <button
+              onClick={() => {
+                if (playerRef.current) {
+                  playerRef.current.playVideo();
+                }
+              }}
+              style={{
+                padding: "12px 18px",
+                border: "none",
+                borderRadius: "6px",
+                cursor: "pointer",
+                background: "#222",
+                color: "white",
+              }}
+            >
+              ▶ Play
+            </button>
+
+            <button
+              onClick={() => {
+                if (playerRef.current) {
+                  playerRef.current.pauseVideo();
+                }
+              }}
+              style={{
+                padding: "12px 18px",
+                border: "none",
+                borderRadius: "6px",
+                cursor: "pointer",
+              }}
+            >
+              ⏸ Pause
+            </button>
+
+            <button
+              onClick={playNextSong}
+              disabled={
+                currentIndex >=
+                queue.length - 1
+              }
+              style={{
+                padding: "12px 18px",
+                border: "none",
+                borderRadius: "6px",
+                cursor:
+                  currentIndex >=
+                  queue.length - 1
+                    ? "not-allowed"
+                    : "pointer",
+              }}
+            >
+              Next ⏭
+            </button>
           </div>
         </div>
       )}
