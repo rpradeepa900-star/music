@@ -10,6 +10,11 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@anuradev/capacitor-background-mode": "^8.1.0",
+    "@capacitor/android": "^8.5.3",
+    "@capacitor/cli": "^8.5.3",
+    "@capacitor/core": "^8.5.3",
+    "@capgo/capacitor-media-session": "^8.1.1",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },

@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Capacitor } from "@capacitor/core";
 import { BackgroundMode } from "@anuradev/capacitor-background-mode";
-import { MediaSession } from "@jofr/capacitor-media-session";
+import { MediaSession } from "@capgo/capacitor-media-session";
 
-// Native app-la (APK) @jofr plugin use aagum, browser-la normal navigator.mediaSession
+// Native app-la (APK) plugin use aagum, browser-la normal navigator.mediaSession
 const isNative = Capacitor.isNativePlatform();
 
 const SERVERS = [
@@ -41,6 +41,52 @@ const STOP_WORDS = new Set([
 const NEW_REGEX = /\b(new|latest|recent|2k|2023|2024|2025|2026)\b/i;
 
 let lastGoodServer = 0;
+
+// ---------- Native (APK) background helpers ----------
+
+// Native call fail aanaalum app crash aagaadhu
+async function safe(fn) {
+  try {
+    return await fn();
+  } catch (err) {
+    console.log("Native call failed:", err);
+    return null;
+  }
+}
+
+// App screen-la irukkum bodhe start pannanum (Android rule), so search click-la call aagum
+async function startBackgroundMode() {
+  if (!isNative) return;
+
+  // Android 13+ la notification permission thevai (music notification kaattum)
+  await safe(() => BackgroundMode.requestNotificationsPermission());
+
+  // Foreground service start aagum, so app close pannaalum / screen off pannaalum song nikkaadhu
+  await safe(() =>
+    BackgroundMode.enable({
+      title: "My Music App",
+      text: "Music play aagikittu irukku",
+      channelName: "Music playback",
+      silent: false,
+      hidden: false,
+      resume: true,
+      disableWebViewOptimization: true,
+    })
+  );
+
+  await safe(() => BackgroundMode.disableWebViewOptimizations());
+}
+
+// Battery optimization-ala Android app-a kill pannaama irukka (oru thadava mattum kekkum)
+async function askBatteryOnce() {
+  if (!isNative) return;
+  if (localStorage.getItem("batteryAsked")) return;
+
+  localStorage.setItem("batteryAsked", "1");
+  await safe(() => BackgroundMode.requestDisableBatteryOptimizations());
+}
+
+// ---------- Invidious helpers ----------
 
 async function fetchJsonWithServer(path, exclude = new Set()) {
   for (let i = 0; i < SERVERS.length; i++) {
@@ -323,6 +369,9 @@ function App() {
   const currentServerRef = useRef(null);
   const preloadedRef = useRef(null); // { forId, song }
   const failCountRef = useRef(0);
+  const nextRetryRef = useRef(0);
+  const bgStartedRef = useRef(false);
+  const lastPosRef = useRef(0);
 
   queueRef.current = queue;
   indexRef.current = currentIndex;
@@ -330,19 +379,25 @@ function App() {
   const currentSong = queue[currentIndex];
   const currentId = currentSong ? currentSong.id : null;
 
-  // History load + background mode enable
+  // History load
   useEffect(() => {
-    const saved = localStorage.getItem("searchHistory");
-
-    if (saved) {
-      setHistory(JSON.parse(saved));
-    }
-
-    if (isNative) {
-      BackgroundMode.enable().catch(() => {});
-      BackgroundMode.disableWebViewOptimizations().catch(() => {});
+    try {
+      const saved = localStorage.getItem("searchHistory");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) setHistory(parsed);
+      }
+    } catch (err) {
+      localStorage.removeItem("searchHistory");
     }
   }, []);
+
+  // Background mode: first search click-la start aagum (app screen-la irukkum bodhu)
+  function ensureBackground() {
+    if (!isNative || bgStartedRef.current) return;
+    bgStartedRef.current = true;
+    startBackgroundMode().then(askBatteryOnce);
+  }
 
   function isGood(item, playedNames, playedIds, playedTitles = []) {
     if (playedIds.has(item.videoId)) return false;
@@ -485,11 +540,17 @@ function App() {
     }
 
     if (song) {
+      nextRetryRef.current = 0;
       setError("");
       queueRef.current = [...queueRef.current, song];
       setQueue(queueRef.current);
       setCurrentIndex(queueRef.current.length - 1);
+    } else if (nextRetryRef.current < 2) {
+      // Background-la network hiccup irundha, 3 sec-la thirumba try pannum
+      nextRetryRef.current += 1;
+      setTimeout(() => nextSong(), 3000);
     } else {
+      nextRetryRef.current = 0;
       setError("Next song kedaikkala. Marubadi Next click pannunga.");
     }
   }
@@ -597,17 +658,34 @@ function App() {
     loadSong(song.id);
   }
 
-  // Lock screen / notification controls
+  // Lock screen / notification controls (song maarum bodhu metadata + buttons update aagum)
   useEffect(() => {
     if (!currentSong) return;
 
+    const artwork = [
+      {
+        src: `https://i.ytimg.com/vi/${currentSong.id}/hqdefault.jpg`,
+        sizes: "480x360",
+        type: "image/jpeg",
+      },
+    ];
+
+    const play = () => {
+      const a = audioRef.current;
+      if (a) a.play().catch(() => setNeedsTap(true));
+    };
+    const pause = () => {
+      const a = audioRef.current;
+      if (a) a.pause();
+    };
+
     const handlers = {
+      play,
+      pause,
       nexttrack: () => nextSong(),
       previoustrack: () => prevSong(),
-      play: () => audioRef.current && audioRef.current.play(),
-      pause: () => audioRef.current && audioRef.current.pause(),
       seekto: (d) => {
-        if (audioRef.current && d.seekTime != null) {
+        if (audioRef.current && d && d.seekTime != null) {
           audioRef.current.currentTime = d.seekTime;
         }
       },
@@ -615,36 +693,32 @@ function App() {
 
     try {
       if (isNative) {
-        MediaSession.setMetadata({
-          title: currentSong.title,
-          artist: "My Music App",
-          artwork: [
-            {
-              src: `https://i.ytimg.com/vi/${currentSong.id}/hqdefault.jpg`,
-              sizes: "480x360",
-              type: "image/jpeg",
-            },
-          ],
-        });
+        safe(() =>
+          MediaSession.setMetadata({
+            title: currentSong.title,
+            artist: "My Music App",
+            artwork,
+          })
+        );
 
         Object.keys(handlers).forEach((action) => {
-          MediaSession.setActionHandler({ action }, handlers[action]);
+          safe(() =>
+            MediaSession.setActionHandler({ action }, handlers[action])
+          );
         });
       } else if ("mediaSession" in navigator) {
         navigator.mediaSession.metadata = new window.MediaMetadata({
           title: currentSong.title,
           artist: "My Music App",
-          artwork: [
-            {
-              src: `https://i.ytimg.com/vi/${currentSong.id}/hqdefault.jpg`,
-              sizes: "480x360",
-              type: "image/jpeg",
-            },
-          ],
+          artwork,
         });
 
         Object.keys(handlers).forEach((action) => {
-          navigator.mediaSession.setActionHandler(action, handlers[action]);
+          try {
+            navigator.mediaSession.setActionHandler(action, handlers[action]);
+          } catch (err) {
+            // indha action browser-la support illa
+          }
         });
       }
     } catch (err) {
@@ -652,24 +726,67 @@ function App() {
     }
   }, [currentId]);
 
+  // Play / pause state notification-la sync aagum
   useEffect(() => {
-    try {
-      const state = playing ? "playing" : "paused";
+    const state = playing ? "playing" : "paused";
 
-      if (isNative) {
-        MediaSession.setPlaybackState({ playbackState: state });
-      } else if ("mediaSession" in navigator) {
+    if (isNative) {
+      safe(() => MediaSession.setPlaybackState({ playbackState: state }));
+    } else if ("mediaSession" in navigator) {
+      try {
         navigator.mediaSession.playbackState = state;
+      } catch (err) {
+        // ignore
       }
-    } catch (err) {
-      // ignore
     }
   }, [playing]);
+
+  // Time update + notification seek bar position (1 sec-ku oru thadava)
+  function handleTimeUpdate(e) {
+    const audio = e.target;
+
+    setTime({
+      current: audio.currentTime,
+      total: audio.duration,
+    });
+
+    const now = Date.now();
+
+    if (
+      now - lastPosRef.current > 1000 &&
+      isFinite(audio.duration) &&
+      audio.duration > 0
+    ) {
+      lastPosRef.current = now;
+
+      const state = {
+        duration: audio.duration,
+        position: Math.min(audio.currentTime, audio.duration),
+        playbackRate: 1,
+      };
+
+      if (isNative) {
+        safe(() => MediaSession.setPositionState(state));
+      } else if (
+        "mediaSession" in navigator &&
+        navigator.mediaSession.setPositionState
+      ) {
+        try {
+          navigator.mediaSession.setPositionState(state);
+        } catch (err) {
+          // ignore
+        }
+      }
+    }
+  }
 
   const searchVideo = async (song) => {
     if (!song.trim()) {
       return;
     }
+
+    // Background play-kku foreground service start (user click-la thaan start aaganum)
+    ensureBackground();
 
     setLoading(true);
     setError("");
@@ -681,6 +798,7 @@ function App() {
     queryRef.current = song;
     preloadedRef.current = null;
     failCountRef.current = 0;
+    nextRetryRef.current = 0;
 
     const wantsNew = NEW_REGEX.test(song);
     wantsNewRef.current = wantsNew;
@@ -741,12 +859,7 @@ function App() {
         onError={handleAudioError}
         onPlay={() => setPlaying(true)}
         onPause={() => setPlaying(false)}
-        onTimeUpdate={(e) =>
-          setTime({
-            current: e.target.currentTime,
-            total: e.target.duration,
-          })
-        }
+        onTimeUpdate={handleTimeUpdate}
       />
 
       <h1 style={styles.title}>🎵 My Music App</h1>
