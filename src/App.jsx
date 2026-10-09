@@ -6,13 +6,21 @@ import { MediaSession } from "@capgo/capacitor-media-session";
 // Native app-la (APK) plugin use aagum, browser-la normal navigator.mediaSession
 const isNative = Capacitor.isNativePlatform();
 
-const SERVERS = [
+// Fallback servers (dynamic list kedaikkalana idhu use aagum)
+const DEFAULT_SERVERS = [
   "https://inv.nadeko.net",
   "https://invidious.nerdvpn.de",
   "https://yt.chocolatemoo53.com",
   "https://invidious.tiekoetter.com",
   "https://invidious.f5.si",
 ];
+
+let SERVERS = [...DEFAULT_SERVERS];
+let serversLoaded = false;
+
+// Ungal PC-oda local IP (ipconfig-la IPv4 paarunga) + port 3000
+// Example: "http://192.168.1.5:3000"
+const BACKEND = "";
 
 const BAD_WORDS = [
   "status", "whatsapp", "black screen", "jukebox", "mashup", "reels",
@@ -58,10 +66,8 @@ async function safe(fn) {
 async function startBackgroundMode() {
   if (!isNative) return;
 
-  // Android 13+ la notification permission thevai (music notification kaattum)
   await safe(() => BackgroundMode.requestNotificationsPermission());
 
-  // Foreground service start aagum, so app close pannaalum / screen off pannaalum song nikkaadhu
   await safe(() =>
     BackgroundMode.enable({
       title: "My Music App",
@@ -77,7 +83,7 @@ async function startBackgroundMode() {
   await safe(() => BackgroundMode.disableWebViewOptimizations());
 }
 
-// Battery optimization-ala Android app-a kill pannaama irukka (oru thadava mattum kekkum)
+// Battery optimization (oru thadava mattum kekkum)
 async function askBatteryOnce() {
   if (!isNative) return;
   if (localStorage.getItem("batteryAsked")) return;
@@ -87,6 +93,46 @@ async function askBatteryOnce() {
 }
 
 // ---------- Invidious helpers ----------
+
+// Working instances list-a online-la irundhu edukkum (hardcoded servers dead aanaalum work aagum)
+async function loadServers() {
+  if (serversLoaded) return;
+  serversLoaded = true;
+
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 6000);
+
+    const res = await fetch(
+      "https://api.invidious.io/instances.json?sort_by=type,health",
+      { signal: controller.signal }
+    );
+    clearTimeout(timer);
+
+    if (!res.ok) return;
+
+    const list = await res.json();
+
+    const fresh = list
+      .filter(
+        ([, info]) =>
+          info && info.type === "https" && info.api === true && info.uri
+      )
+      .map(([, info]) => info.uri.replace(/\/$/, ""))
+      .slice(0, 8);
+
+    if (fresh.length > 0) {
+      const merged = [...fresh];
+      for (const s of DEFAULT_SERVERS) {
+        if (!merged.includes(s)) merged.push(s);
+      }
+      SERVERS = merged;
+      lastGoodServer = 0;
+    }
+  } catch (err) {
+    console.log("Instance list load failed, default servers use pannuren");
+  }
+}
 
 async function fetchJsonWithServer(path, exclude = new Set()) {
   for (let i = 0; i < SERVERS.length; i++) {
@@ -104,13 +150,16 @@ async function fetchJsonWithServer(path, exclude = new Set()) {
       });
       clearTimeout(timer);
 
-      if (!response.ok) continue;
+      if (!response.ok) {
+        console.log("Server status", server, response.status);
+        continue;
+      }
 
       const data = await response.json();
       lastGoodServer = idx;
       return { data, server };
     } catch (err) {
-      console.log("Server failed:", server);
+      console.log("Server failed:", server, err && err.message);
     }
   }
 
@@ -143,7 +192,80 @@ async function getRelated(videoId) {
 }
 
 // Audio stream URL (m4a first, Android-la nalla work aagum)
+const PIPED_SERVERS = [
+  "https://pipedapi.kavin.rocks",
+  "https://pipedapi.adminforge.de",
+  "https://api.piped.private.coffee",
+];
+
+// JSON-a nambaama direct audio link-ae audio.src-ku kudukkum.
+// Fail aanaa onError -> handleAudioError -> adutha server try pannum.
 async function getAudio(videoId, exclude) {
+  if (BACKEND && !exclude.has(BACKEND)) {
+    return { url: `${BACKEND}/audio/${videoId}`, server: BACKEND };
+  }
+
+  // 1) Invidious direct stream (itag 140 = m4a 128kbps)
+  for (let i = 0; i < SERVERS.length; i++) {
+    const server = SERVERS[(lastGoodServer + i) % SERVERS.length];
+    if (exclude.has(server)) continue;
+
+    return {
+      url: `${server}/latest_version?id=${videoId}&itag=140&local=true`,
+      server,
+    };
+  }
+
+  // 2) Piped servers (Invidious ellaam fail aanaa)
+  for (const server of PIPED_SERVERS) {
+    if (exclude.has(server)) continue;
+
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 8000);
+
+      const res = await fetch(`${server}/streams/${videoId}`, {
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+
+      if (!res.ok) {
+        exclude.add(server);
+        continue;
+      }
+
+      const data = await res.json();
+      const audios = (data.audioStreams || []).filter((a) => a.url);
+
+      if (audios.length === 0) {
+        exclude.add(server);
+        continue;
+      }
+
+      const m4a = audios.filter((a) => (a.mimeType || "").startsWith("audio/mp4"));
+      const pool = m4a.length > 0 ? m4a : audios;
+
+      pool.sort(
+        (a, b) =>
+          Math.abs(Number(a.bitrate) - 128000) -
+          Math.abs(Number(b.bitrate) - 128000)
+      );
+
+      return { url: pool[0].url, server };
+    } catch (err) {
+      exclude.add(server);
+    }
+  }
+
+  return null;
+}
+
+async function getAudioOld(videoId, exclude) {
+  // Own backend first (yt-dlp). Fail aanaa exclude-la serthuttu Invidious-ku poga
+  if (BACKEND && !exclude.has(BACKEND)) {
+    return { url: `${BACKEND}/audio/${videoId}`, server: BACKEND };
+  }
+
   for (let attempt = 0; attempt < SERVERS.length; attempt++) {
     const { data, server } = await fetchJsonWithServer(
       `/api/v1/videos/${videoId}?local=true`,
@@ -158,6 +280,7 @@ async function getAudio(videoId, exclude) {
     );
 
     if (audios.length === 0) {
+      // Indha server-la audio illa (bot check / blocked), vera server try pannum
       exclude.add(server);
       continue;
     }
@@ -369,6 +492,7 @@ function App() {
   const currentServerRef = useRef(null);
   const preloadedRef = useRef(null); // { forId, song }
   const failCountRef = useRef(0);
+  const audioErrCountRef = useRef(0);
   const nextRetryRef = useRef(0);
   const bgStartedRef = useRef(false);
   const lastPosRef = useRef(0);
@@ -574,7 +698,13 @@ function App() {
     if (!audio) return;
 
     if (audio.paused) {
-      audio.play().catch(() => setNeedsTap(true));
+      audio
+        .play()
+        .then(() => setNeedsTap(false))
+        .catch((e) => {
+          console.log("Play error:", e.name, e.message);
+          setNeedsTap(true);
+        });
     } else {
       audio.pause();
     }
@@ -604,7 +734,9 @@ function App() {
       failCountRef.current += 1;
 
       if (failCountRef.current >= 3) {
-        setError("Audio load aagala. Internet / server check pannunga.");
+        setError(
+          "Audio load aagala. Ella servers-um fail (blocked / bot check irukkalaam). Konjam neram kazhichi try pannunga."
+        );
         return;
       }
 
@@ -616,7 +748,10 @@ function App() {
     failCountRef.current = 0;
     currentServerRef.current = result.server;
 
+    console.log("Playing:", result.url);
+
     audio.src = result.url;
+    audio.load();
 
     audio
       .play()
@@ -625,7 +760,18 @@ function App() {
         setError("");
         preloadNext();
       })
-      .catch(() => setNeedsTap(true));
+      .catch((e) => {
+        console.log("Play error:", e.name, e.message);
+
+        // NotAllowedError = autoplay block (Tap to play kaattum)
+        // AbortError = vera song load aagi cancel aanadhu (ignore)
+        if (e.name === "NotAllowedError") {
+          setNeedsTap(true);
+        } else if (e.name !== "AbortError") {
+          setError("Play error: " + e.name);
+          setNeedsTap(true);
+        }
+      });
 
     setAudioLoading(false);
   }
@@ -643,13 +789,31 @@ function App() {
     }
 
     triedRef.current = new Set();
+    audioErrCountRef.current = 0;
     loadSong(currentId);
   }, [currentId]);
 
   // Audio error aanaa vera server try pannum
   function handleAudioError() {
+    const audio = audioRef.current;
+
+    // src illaama fire aana error-a ignore pannu
+    if (!audio || !audio.getAttribute("src")) return;
+
     const song = queueRef.current[indexRef.current];
     if (!song) return;
+
+    const code = audio.error ? audio.error.code : "?";
+    console.log("Audio error code:", code, "server:", currentServerRef.current);
+
+    audioErrCountRef.current += 1;
+
+    // Ellaa servers-um try pannaachu, innum fail aana nirutthidu
+    if (audioErrCountRef.current > SERVERS.length + PIPED_SERVERS.length + 2) {
+      setAudioLoading(false);
+      setError(`Audio play aagala (error code ${code}). Next song try pannunga.`);
+      return;
+    }
 
     if (currentServerRef.current) {
       triedRef.current.add(currentServerRef.current);
@@ -798,7 +962,11 @@ function App() {
     queryRef.current = song;
     preloadedRef.current = null;
     failCountRef.current = 0;
+    audioErrCountRef.current = 0;
     nextRetryRef.current = 0;
+
+    // Working servers list load (first time mattum)
+    await loadServers();
 
     const wantsNew = NEW_REGEX.test(song);
     wantsNewRef.current = wantsNew;
