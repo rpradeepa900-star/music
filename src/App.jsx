@@ -274,166 +274,171 @@ function isGood(item, playedNames, playedIds, lang, mood) {
   return true;
 }
 
-// ---------- Styles (Vibe Beatzz) ----------
+// ---------- Styles (Vibe Beatzz, mobile responsive) ----------
 
-const styles = {
-  page: {
-    padding: "20px",
-    fontFamily: "Arial",
-    color: "white",
-    minHeight: "100vh",
-  },
-  title: {
-    margin: "8px 0 20px 70px",
-    fontSize: "24px",
-    color: GREEN,
-  },
-  searchBox: {
-    position: "absolute",
-    left: "100px",
-    top: "100px",
-  },
-  input: {
-    padding: "12px",
-    width: "500px",
-    fontSize: "16px",
-    borderRadius: "10px",
-    border: "1px solid #c8c7b7",
-    backgroundColor: "#eae9eb",
-  },
-  searchBtn: {
-    padding: "12px",
-    width: "50px",
-    fontSize: "20px",
-    borderRadius: "15px",
-    border: "none",
-    marginLeft: "10px",
-    backgroundColor: GREEN,
-    color: "black",
-  },
-  floatingError: {
-    color: "red",
-    position: "absolute",
-    top: "155px",
-    left: "100px",
-  },
-  historyToggle: {
-    position: "absolute",
-    left: "91%",
-    top: "10%",
-    zIndex: 10,
-    border: "none",
-    padding: "8px",
-    borderRadius: "5px",
-    backgroundColor: GREEN,
-    cursor: "pointer",
-    color: "#000",
-  },
-  historyPanel: {
-    position: "absolute",
-    left: "80%",
-    top: "10%",
-    marginTop: "40px",
-    display: "flex",
-    gap: "15px",
-    alignItems: "stretch",
-  },
-  historyLine: {
-    width: "2px",
-    backgroundColor: "white",
-    borderRadius: "10px",
-    flexShrink: 0,
-  },
-  historyHeading: {
-    color: GREEN,
-    fontSize: "16px",
-    marginBottom: "10px",
-  },
-  historyItem: {
-    padding: "10px",
-    marginBottom: "5px",
-    background: "#eaf4ff",
-    width: "250px",
-    cursor: "pointer",
-    borderRadius: "5px",
-    position: "relative",
-    color: "#000",
-    fontSize: "12px",
-    boxSizing: "border-box",
-    paddingRight: "40px",
-  },
-  historyDelete: {
-    border: "none",
-    background: "none",
-    cursor: "pointer",
-    position: "absolute",
-    right: "10px",
-    top: "50%",
-    transform: "translateY(-50%)",
-    color: "red",
-    fontSize: "16px",
-  },
-  clearBtn: {
-    marginTop: "10px",
-    padding: "5px",
-    border: "none",
-    backgroundColor: GREEN,
-    borderRadius: "5px",
-    cursor: "pointer",
-    color: "#000",
-  },
-  playerBlock: {
-    marginTop: "30px",
-    position: "absolute",
-    left: "100px",
-    top: "130px",
-    paddingBottom: "40px",
-  },
-  songTitle: {
-    fontSize: "16px",
-    marginBottom: "15px",
-    color: "#fff",
-    width: "800px",
-  },
-  playerBox: {
-    width: "800px",
-    height: "400px",
-    border: "none",
-    borderRadius: "10px",
-    overflow: "hidden",
-  },
-  controls: {
-    display: "flex",
-    alignItems: "center",
-    gap: "15px",
-    marginTop: "20px",
-  },
-  roundBtn: {
-    backgroundColor: GREEN,
-    borderRadius: "50%",
-    height: "40px",
-    width: "40px",
-    border: "none",
-    cursor: "pointer",
-    color: "black",
-    fontSize: "14px",
-  },
-  status: {
-    fontSize: "13px",
-    color: GREEN,
-    marginTop: "12px",
-  },
-  playedHeading: {
-    color: GREEN,
-    fontSize: "16px",
-    margin: "20px 0 10px",
-  },
-  playedList: {
-    width: "800px",
-    maxHeight: "200px",
-    overflowY: "auto",
-  },
-};
+const CSS = `
+#root { max-width: none !important; margin: 0 !important; padding: 0 !important; text-align: left !important; }
+
+.vb-page {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 16px;
+  padding-top: calc(16px + env(safe-area-inset-top));
+  padding-bottom: calc(28px + env(safe-area-inset-bottom));
+  font-family: Arial, sans-serif;
+  color: white;
+  min-height: 100vh;
+  box-sizing: border-box;
+  text-align: left;
+}
+
+.vb-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.vb-title { margin: 0; font-size: 22px; color: #4cff6d; }
+
+.vb-btn-small {
+  border: none;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: #4cff6d;
+  color: #000;
+  cursor: pointer;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.vb-search { display: flex; gap: 8px; }
+.vb-input {
+  flex: 1;
+  min-width: 0;
+  padding: 12px;
+  font-size: 16px;
+  border-radius: 10px;
+  border: 1px solid #c8c7b7;
+  background: #eae9eb;
+  color: #000;
+  box-sizing: border-box;
+}
+.vb-search-btn {
+  flex-shrink: 0;
+  width: 50px;
+  font-size: 20px;
+  border-radius: 15px;
+  border: none;
+  background: #4cff6d;
+  color: black;
+  cursor: pointer;
+}
+
+.vb-error { color: red; margin: 12px 0 0; font-size: 14px; }
+.vb-muted { color: #4cff6d; font-size: 14px; margin: 0; }
+
+.vb-history {
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 10px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.vb-history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.vb-history-head h2 { margin: 0; font-size: 16px; color: #4cff6d; }
+.vb-history-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  margin-bottom: 6px;
+  background: #eaf4ff;
+  color: #000;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.vb-history-item span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vb-del {
+  border: none;
+  background: none;
+  color: red;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 4px 8px;
+}
+
+.vb-now { margin-top: 20px; }
+.vb-song-title { font-size: 16px; margin: 0 0 12px; line-height: 1.35; color: #fff; }
+
+/* 16:9 player, screen width-ku thagundha maari resize aagum */
+.vb-player {
+  position: relative;
+  width: 100%;
+  height: 0;
+  padding-bottom: 56.25%;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #000;
+}
+.vb-player > div { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+.vb-player iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0; }
+
+.vb-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  margin-top: 18px;
+}
+.vb-round {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: none;
+  background: #4cff6d;
+  color: black;
+  font-size: 16px;
+  cursor: pointer;
+}
+.vb-round.main { width: 56px; height: 56px; font-size: 18px; }
+.vb-round:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.vb-status { font-size: 13px; color: #4cff6d; margin-top: 12px; text-align: center; }
+
+.vb-played-title { color: #4cff6d; font-size: 16px; margin: 20px 0 10px; }
+.vb-played { max-height: 240px; overflow-y: auto; }
+.vb-played-item {
+  padding: 10px 12px;
+  margin-bottom: 5px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #000;
+  background: #eaf4ff;
+}
+.vb-played-item.active { background: #4cff6d; font-weight: bold; }
+
+@media (min-width: 700px) {
+  .vb-title { font-size: 24px; }
+  .vb-song-title { font-size: 18px; }
+  .vb-btn-small { font-size: 14px; }
+}
+`;
 
 function App() {
   const [search, setSearch] = useState("");
@@ -692,8 +697,8 @@ function App() {
       containerRef.current.appendChild(el);
 
       playerRef.current = new window.YT.Player(el, {
-        width: "800",
-        height: "400",
+        width: "100%",
+        height: "100%",
         videoId: videoId,
         playerVars: {
           autoplay: 1,
@@ -866,14 +871,25 @@ function App() {
   };
 
   return (
-    <div style={styles.page}>
-      <h1 style={styles.title}>🎧 Vibe Beatzz</h1>
+    <div className="vb-page">
+      <style>{CSS}</style>
+
+      <header className="vb-header">
+        <h1 className="vb-title">🎧 Vibe Beatzz</h1>
+
+        <button
+          className="vb-btn-small"
+          onClick={() => setShowHistory((prev) => !prev)}
+        >
+          {showHistory ? "Hide History" : "View History"}
+        </button>
+      </header>
 
       {/* Search */}
-      <div style={styles.searchBox}>
+      <div className="vb-search">
         <input
           ref={searchRef}
-          style={styles.input}
+          className="vb-input"
           type="text"
           placeholder="Search song... (90s songs, sad song)"
           value={search}
@@ -884,6 +900,7 @@ function App() {
         />
 
         <button
+          className="vb-search-btn"
           onClick={() => {
             if (!search.trim()) {
               focusInput();
@@ -891,7 +908,7 @@ function App() {
               handleSearch();
             }
           }}
-          style={{ ...styles.searchBtn, cursor: loading ? "wait" : "pointer" }}
+          style={{ cursor: loading ? "wait" : "pointer" }}
           disabled={loading}
           title="Search song"
         >
@@ -900,142 +917,112 @@ function App() {
       </div>
 
       {/* Error (player illaadha bodhu) */}
-      {error && queue.length === 0 && (
-        <p style={styles.floatingError}>{error}</p>
-      )}
-
-      {/* View / Hide History */}
-      <button
-        onClick={() => setShowHistory((prev) => !prev)}
-        style={styles.historyToggle}
-      >
-        {showHistory ? "Hide History" : "View History"}
-      </button>
+      {error && queue.length === 0 && <p className="vb-error">{error}</p>}
 
       {/* History */}
       {showHistory && (
-        <div className="history" style={styles.historyPanel}>
-          <div style={styles.historyLine} />
-
-          <div>
-            <h2 style={styles.historyHeading}>Search History</h2>
-
-            {history.length === 0 ? (
-              <p style={{ color: GREEN }}>No search history</p>
-            ) : (
-              history.map((item, index) => (
-                <div
-                  key={`${item}-${index}`}
-                  onClick={() => handleHistoryClick(item)}
-                  style={styles.historyItem}
-                >
-                  {item}
-
-                  <button
-                    style={styles.historyDelete}
-                    title="Delete this history"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      clearSpecificHistoryItem(item);
-                    }}
-                  >
-                    ✘
-                  </button>
-                </div>
-              ))
-            )}
+        <div className="vb-history">
+          <div className="vb-history-head">
+            <h2>Search History</h2>
 
             {history.length > 0 && (
-              <button onClick={clearHistory} style={styles.clearBtn}>
+              <button className="vb-btn-small" onClick={clearHistory}>
                 Clear History
               </button>
             )}
           </div>
+
+          {history.length === 0 ? (
+            <p className="vb-muted">No search history</p>
+          ) : (
+            history.map((item, index) => (
+              <div
+                key={`${item}-${index}`}
+                className="vb-history-item"
+                onClick={() => handleHistoryClick(item)}
+              >
+                <span>{item}</span>
+
+                <button
+                  className="vb-del"
+                  title="Delete this history"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    clearSpecificHistoryItem(item);
+                  }}
+                >
+                  ✘
+                </button>
+              </div>
+            ))
+          )}
         </div>
       )}
 
       {/* YouTube Player + queue */}
       {queue.length > 0 && queue[currentIndex] && (
-        <div style={styles.playerBlock}>
-          <h2 style={styles.songTitle}>{queue[currentIndex].title}</h2>
+        <section className="vb-now">
+          <h2 className="vb-song-title">{queue[currentIndex].title}</h2>
 
-          <div ref={containerRef} id="ytplayer" style={styles.playerBox} />
+          <div className="vb-player">
+            <div ref={containerRef} id="ytplayer" />
+          </div>
 
           {/* Controls */}
-          <div style={styles.controls}>
+          <div className="vb-controls">
             <button
+              className="vb-round"
               onClick={prevSong}
               disabled={currentIndex === 0}
-              style={{
-                ...styles.roundBtn,
-                opacity: currentIndex === 0 ? 0.4 : 1,
-                cursor: currentIndex === 0 ? "not-allowed" : "pointer",
-              }}
               title="Previous song"
             >
               ⏮
             </button>
 
             <button
+              className="vb-round main"
               onClick={togglePlay}
-              style={styles.roundBtn}
               title={isPlaying ? "Pause" : "Play"}
             >
               {isPlaying ? "❚❚" : "▶"}
             </button>
 
             <button
+              className="vb-round"
               onClick={nextSong}
               disabled={nextLoading}
-              style={{
-                ...styles.roundBtn,
-                opacity: nextLoading ? 0.4 : 1,
-                cursor: nextLoading ? "wait" : "pointer",
-              }}
               title="Next song"
             >
               {nextLoading ? "…" : "⏭"}
             </button>
           </div>
 
-          <div style={styles.status}>
+          <div className="vb-status">
             Song {currentIndex + 1}
             {modeInfo ? ` • Mode: ${modeInfo}` : ""}
             {nextLoading ? " • Next song thedikitu irukken..." : ""}
           </div>
 
-          {error && (
-            <p style={{ color: "red", margin: "10px 0 0" }}>{error}</p>
-          )}
+          {error && <p className="vb-error">{error}</p>}
 
           {/* Played songs */}
-          <h3 style={styles.playedHeading}>Played Songs</h3>
+          <h3 className="vb-played-title">Played Songs</h3>
 
-          <div style={styles.playedList}>
+          <div className="vb-played">
             {queue.map((v, i) => (
               <div
                 key={v.id}
+                className={`vb-played-item${i === currentIndex ? " active" : ""}`}
                 onClick={() => {
                   indexRef.current = i;
                   setCurrentIndex(i);
-                }}
-                style={{
-                  padding: "10px",
-                  marginBottom: "5px",
-                  borderRadius: "5px",
-                  cursor: "pointer",
-                  fontSize: "12px",
-                  boxSizing: "border-box",
-                  color: "#000",
-                  background: i === currentIndex ? GREEN : "#eaf4ff",
-                  fontWeight: i === currentIndex ? "bold" : "normal",
                 }}
               >
                 {i + 1}. {v.title}
               </div>
             ))}
           </div>
-        </div>
+        </section>
       )}
     </div>
   );
